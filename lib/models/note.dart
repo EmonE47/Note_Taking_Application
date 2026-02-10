@@ -68,4 +68,14 @@ class Note {
   Color get noteColor {
     return Color(int.parse(color));
   }
+
+  String get fileContent => content;
+
+  String get safeFileName {
+    final safeTitle = title
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .toLowerCase();
+    return '${safeTitle.isNotEmpty ? safeTitle : 'untitled'}.md';
+  }
 }

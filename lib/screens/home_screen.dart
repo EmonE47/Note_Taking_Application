@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/note.dart';
 import '../database/database_helper.dart';
+import '../services/export_service.dart';
 import '../widgets/note_card.dart';
 import '../widgets/empty_state.dart';
 import 'note_detail_screen.dart';
@@ -16,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<Note> notes = [];
   bool isLoading = true;
+  bool _isRestoring = false;
 
   @override
   void initState() {
@@ -26,14 +28,72 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadNotes() async {
     setState(() => isLoading = true);
     final allNotes = await DatabaseHelper.instance.getAllNotes();
+    if (allNotes.isEmpty) {
+      final restored = await _restoreNotesFromFiles();
+      if (restored) return;
+    }
     setState(() {
       notes = allNotes;
       isLoading = false;
     });
   }
 
-  Future<void> _deleteNote(int id) async {
-    await DatabaseHelper.instance.deleteNote(id);
+  Future<bool> _restoreNotesFromFiles() async {
+    if (_isRestoring) return false;
+    _isRestoring = true;
+
+    try {
+      final exportService = ExportService.instance;
+      final granted = await exportService.ensureExportPermission();
+      if (!granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Storage access needed to restore notes from MyDiary folder.',
+              ),
+              action: SnackBarAction(
+                label: 'Grant',
+                onPressed: () async {
+                  final ok = await exportService.ensureExportPermission(
+                    openSettingsIfDenied: true,
+                  );
+                  if (ok && mounted) {
+                    _loadNotes();
+                  }
+                },
+              ),
+            ),
+          );
+        }
+        return false;
+      }
+
+      final fileNotes = await exportService.readNotesFromFolder();
+      if (fileNotes.isEmpty) {
+        return false;
+      }
+
+      for (final note in fileNotes) {
+        await DatabaseHelper.instance.insertNote(note);
+      }
+
+      final refreshed = await DatabaseHelper.instance.getAllNotes();
+      if (mounted) {
+        setState(() {
+          notes = refreshed;
+          isLoading = false;
+        });
+      }
+      return true;
+    } finally {
+      _isRestoring = false;
+    }
+  }
+
+  Future<void> _deleteNote(Note note) async {
+    await DatabaseHelper.instance.deleteNote(note.id!);
+    await ExportService.instance.deleteNoteFile(note);
     _loadNotes();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -59,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showDeleteDialog(int noteId) {
+  void _showDeleteDialog(Note note) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -72,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           TextButton(
             onPressed: () {
-              _deleteNote(noteId);
+              _deleteNote(note);
               Navigator.pop(context);
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -114,25 +174,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ],
-                ),
-              ),
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.auto_awesome,
-                  color: theme.colorScheme.primary,
                 ),
               ),
             ],
@@ -203,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notepad Pro'),
+        title: const Text('MyDiary'),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_none),
@@ -247,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           direction: DismissDirection.endToStart,
                           confirmDismiss: (direction) async {
                             if (direction == DismissDirection.endToStart) {
-                              _showDeleteDialog(note.id!);
+                              _showDeleteDialog(note);
                               return false;
                             }
                             return null;

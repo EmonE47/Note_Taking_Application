@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../models/note.dart';
 import '../database/database_helper.dart';
+import '../services/export_service.dart';
 
 class NoteDetailScreen extends StatefulWidget {
   final Note? note;
@@ -43,6 +44,8 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       return;
     }
 
+    final previousFileName = widget.note?.safeFileName;
+
     final note = Note(
       id: widget.note?.id,
       title: _titleController.text.trim().isEmpty
@@ -56,12 +59,49 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     );
 
     if (widget.note == null) {
-      await DatabaseHelper.instance.insertNote(note);
+      final newId = await DatabaseHelper.instance.insertNote(note);
+      note.id = newId;
     } else {
       await DatabaseHelper.instance.updateNote(note);
     }
 
+    await _syncNoteFile(note, previousFileName: previousFileName);
+
     Navigator.pop(context, true);
+  }
+
+  Future<void> _syncNoteFile(Note note, {String? previousFileName}) async {
+    try {
+      final exportService = ExportService.instance;
+      final granted = await exportService.ensureExportPermission(
+        openSettingsIfDenied: true,
+      );
+
+      if (!granted) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Note saved, but storage access is needed to write .md files to MyDiary folder.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await exportService.syncNoteFile(
+        note,
+        previousFileName: previousFileName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to write file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showColorPicker() {

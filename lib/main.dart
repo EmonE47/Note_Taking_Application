@@ -20,7 +20,7 @@ class MyApp extends StatelessWidget {
     const surface = Color(0xFFFFFEFB);
 
     return MaterialApp(
-      title: 'Notepad Pro',
+      title: 'MyDiary',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
