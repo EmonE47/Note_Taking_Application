@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'screens/home_screen.dart';
 import 'database/database_helper.dart';
 
@@ -13,20 +14,49 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const brandPrimary = Color(0xFF1B6E6A);
+    const brandSecondary = Color(0xFFFFB13D);
+    const canvas = Color(0xFFF7F4EF);
+    const surface = Color(0xFFFFFEFB);
+
     return MaterialApp(
       title: 'Notepad Pro',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.grey[50],
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          elevation: 1,
-          centerTitle: true,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: brandPrimary,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: brandPrimary,
+          secondary: brandSecondary,
+          surface: surface,
+          background: canvas,
         ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: Colors.blue[700],
+        scaffoldBackgroundColor: canvas,
+        textTheme: GoogleFonts.spaceGroteskTextTheme(),
+        appBarTheme: AppBarTheme(
+          backgroundColor: canvas,
+          foregroundColor: const Color(0xFF1E1E1E),
+          elevation: 0,
+          centerTitle: false,
+          surfaceTintColor: Colors.transparent,
+          titleTextStyle: GoogleFonts.dmSerifDisplay(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1E1E1E),
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: brandPrimary,
           foregroundColor: Colors.white,
+          shape: StadiumBorder(),
+        ),
+        cardTheme: CardThemeData(
+          color: surface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
         ),
       ),
       home: const HomeScreen(),

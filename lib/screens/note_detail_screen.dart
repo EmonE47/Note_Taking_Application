@@ -97,6 +97,8 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return WillPopScope(
       onWillPop: () async {
         await _saveNote();
@@ -105,8 +107,6 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.note == null ? 'New Note' : 'Edit Note'),
-          backgroundColor: _selectedColor,
-          foregroundColor: Colors.white,
           actions: [
             IconButton(
               icon: Icon(_isPinned ? Icons.push_pin : Icons.push_pin_outlined),
@@ -121,42 +121,124 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             IconButton(icon: const Icon(Icons.save), onPressed: _saveNote),
           ],
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              TextField(
-                controller: _titleController,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-                decoration: const InputDecoration(
-                  hintText: 'Title',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: _selectedColor.withOpacity(0.3),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            height: 16,
+                            width: 16,
+                            decoration: BoxDecoration(
+                              color: _selectedColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isPinned ? 'Pinned note' : 'Standard note',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: const Color(0xFF6B6B6B),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            widget.note?.formattedDate ?? 'Just now',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: const Color(0xFF8A8A8A),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _titleController,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1E1E1E),
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Title',
+                          border: InputBorder.none,
+                        ),
+                        maxLines: 2,
+                      ),
+                      const Divider(height: 24),
+                      TextField(
+                        controller: _contentController,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          height: 1.5,
+                          color: const Color(0xFF3D3D3D),
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Start typing...',
+                          border: InputBorder.none,
+                        ),
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                      ),
+                    ],
                   ),
                 ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: TextField(
-                  controller: _contentController,
-                  style: const TextStyle(fontSize: 18),
-                  decoration: const InputDecoration(
-                    hintText: 'Start typing...',
-                    border: InputBorder.none,
-                    hintStyle: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _showColorPicker,
+                        icon: const Icon(Icons.palette_outlined),
+                        label: const Text('Color'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.primary,
+                          side: BorderSide(color: theme.colorScheme.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _saveNote,
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Save'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

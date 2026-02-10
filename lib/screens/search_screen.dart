@@ -41,74 +41,124 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: TextField(
-          controller: _searchController,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Search notes...',
-            border: InputBorder.none,
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      _performSearch('');
-                    },
-                  )
-                : null,
-          ),
-          onChanged: (value) => _performSearch(value),
-        ),
-      ),
-      body: _isSearching
-          ? const Center(child: CircularProgressIndicator())
-          : _searchResults.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Row(
                 children: [
-                  Icon(
-                    _searchController.text.isEmpty
-                        ? Icons.search
-                        : Icons.search_off,
-                    size: 64,
-                    color: Colors.grey[400],
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_rounded),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(width: 6),
                   Text(
-                    _searchController.text.isEmpty
-                        ? 'Search for notes'
-                        : 'No results found',
-                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                    'Search',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                final note = _searchResults[index];
-                return NoteCard(
-                  note: note,
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => NoteDetailScreen(note: note),
-                      ),
-                    );
-                    _performSearch(_searchController.text);
-                  },
-                );
-              },
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: theme.colorScheme.primary),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search notes...',
+                    border: InputBorder.none,
+                    icon: Icon(Icons.search, color: theme.colorScheme.primary),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              _performSearch('');
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                  ),
+                  onChanged: (value) {
+                    _performSearch(value);
+                    setState(() {});
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: _isSearching
+                  ? const Center(child: CircularProgressIndicator())
+                  : _searchResults.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _searchController.text.isEmpty
+                                ? Icons.search
+                                : Icons.search_off,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _searchController.text.isEmpty
+                                ? 'Search for notes'
+                                : 'No results found',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) {
+                        final note = _searchResults[index];
+                        return NoteCard(
+                          note: note,
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => NoteDetailScreen(
+                                  note: note,
+                                ),
+                              ),
+                            );
+                            _performSearch(_searchController.text);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
