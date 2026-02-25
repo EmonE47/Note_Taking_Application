@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import '../models/note.dart';
+
 import '../database/database_helper.dart';
+import '../models/note.dart';
 import '../services/export_service.dart';
+import '../services/note_sync_service.dart';
+import '../utils/constants.dart';
 
 class NoteDetailScreen extends StatefulWidget {
   final Note? note;
@@ -14,10 +17,12 @@ class NoteDetailScreen extends StatefulWidget {
 }
 
 class _NoteDetailScreenState extends State<NoteDetailScreen> {
-  late TextEditingController _titleController;
-  late TextEditingController _contentController;
-  Color _selectedColor = Colors.blue;
+  late final TextEditingController _titleController;
+  late final TextEditingController _contentController;
+
+  Color _selectedColor = AppConstants.noteColors.first;
   bool _isPinned = false;
+  String? _selectedCategory;
 
   @override
   void initState() {
@@ -26,16 +31,35 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     _contentController = TextEditingController(
       text: widget.note?.content ?? '',
     );
-    _selectedColor = widget.note?.noteColor ?? Colors.blue;
+    _contentController.addListener(_onContentChanged);
+    _selectedColor = widget.note?.noteColor ?? AppConstants.noteColors.first;
     _isPinned = widget.note?.isPinned ?? false;
+    _selectedCategory = (widget.note?.category ?? '').trim().isEmpty
+        ? null
+        : widget.note?.category?.trim();
   }
 
   @override
   void dispose() {
+    _contentController.removeListener(_onContentChanged);
     _titleController.dispose();
     _contentController.dispose();
     super.dispose();
   }
+
+  void _onContentChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  int get _wordCount {
+    final trimmed = _contentController.text.trim();
+    if (trimmed.isEmpty) return 0;
+    return trimmed.split(RegExp(r'\s+')).length;
+  }
+
+  int get _characterCount => _contentController.text.length;
 
   Future<void> _saveNote() async {
     if (_titleController.text.trim().isEmpty &&
@@ -48,14 +72,16 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
     final note = Note(
       id: widget.note?.id,
+      cloudId: widget.note?.cloudId,
       title: _titleController.text.trim().isEmpty
           ? 'Untitled'
           : _titleController.text.trim(),
       content: _contentController.text.trim(),
       createdAt: widget.note?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
-      color: _selectedColor.value.toString(),
+      color: _selectedColor.toARGB32().toString(),
       isPinned: _isPinned,
+      category: _selectedCategory,
     );
 
     if (widget.note == null) {
@@ -65,9 +91,19 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       await DatabaseHelper.instance.updateNote(note);
     }
 
+    await _syncNoteToCloud(note);
     await _syncNoteFile(note, previousFileName: previousFileName);
 
+    if (!mounted) return;
     Navigator.pop(context, true);
+  }
+
+  Future<void> _syncNoteToCloud(Note note) async {
+    try {
+      await NoteSyncService.instance.upsertNote(note);
+    } catch (_) {
+      // Keep local save successful even when cloud sync fails.
+    }
   }
 
   Future<void> _syncNoteFile(Note note, {String? previousFileName}) async {
@@ -108,30 +144,78 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Pick a color'),
+        title: const Text('Choose note color'),
         content: SingleChildScrollView(
           child: ColorPicker(
             pickerColor: _selectedColor,
             onColorChanged: (color) {
               setState(() => _selectedColor = color);
             },
-            showLabel: true,
             pickerAreaHeightPercent: 0.8,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Select'),
+            child: const Text('Done'),
           ),
         ],
       ),
+    );
+  }
+
+  void _insertChecklistItem() {
+    final currentText = _contentController.text;
+    final selection = _contentController.selection;
+    final cursor = selection.isValid ? selection.start : currentText.length;
+
+    final safeCursor = cursor.clamp(0, currentText.length);
+    final prefix = currentText.substring(0, safeCursor);
+    final suffix = currentText.substring(safeCursor);
+    final insertion =
+        '${prefix.isEmpty || prefix.endsWith('\n') ? '' : '\n'}- [ ] ';
+    final newText = '$prefix$insertion$suffix';
+
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: prefix.length + insertion.length,
+      ),
+    );
+  }
+
+  Widget _buildCategorySection(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Category',
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ChoiceChip(
+              selected: _selectedCategory == null,
+              label: const Text('None'),
+              onSelected: (_) => setState(() => _selectedCategory = null),
+            ),
+            ...AppConstants.categories.map((category) {
+              return ChoiceChip(
+                selected: _selectedCategory == category,
+                label: Text(category),
+                onSelected: (_) => setState(() => _selectedCategory = category),
+              );
+            }),
+          ],
+        ),
+      ],
     );
   }
 
@@ -139,107 +223,108 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
         await _saveNote();
-        return true;
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.note == null ? 'New Note' : 'Edit Note'),
+          title: Text(widget.note == null ? 'Create Note' : 'Edit Note'),
           actions: [
             IconButton(
-              icon: Icon(_isPinned ? Icons.push_pin : Icons.push_pin_outlined),
+              tooltip: _isPinned ? 'Unpin note' : 'Pin note',
+              icon: Icon(
+                _isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+              ),
               onPressed: () {
                 setState(() => _isPinned = !_isPinned);
               },
             ),
             IconButton(
-              icon: const Icon(Icons.color_lens),
+              tooltip: 'Checklist item',
+              icon: const Icon(Icons.checklist_rtl_rounded),
+              onPressed: _insertChecklistItem,
+            ),
+            IconButton(
+              tooltip: 'Color',
+              icon: const Icon(Icons.palette_outlined),
               onPressed: _showColorPicker,
             ),
-            IconButton(icon: const Icon(Icons.save), onPressed: _saveNote),
+            IconButton(
+              tooltip: 'Save',
+              icon: const Icon(Icons.save_rounded),
+              onPressed: _saveNote,
+            ),
+            const SizedBox(width: 4),
           ],
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(18),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: _selectedColor.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      colors: [
+                        _selectedColor.withValues(alpha: 0.18),
+                        theme.colorScheme.surface,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: _selectedColor.withValues(alpha: 0.42),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            height: 16,
-                            width: 16,
-                            decoration: BoxDecoration(
-                              color: _selectedColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isPinned ? 'Pinned note' : 'Standard note',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: const Color(0xFF6B6B6B),
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            widget.note?.formattedDate ?? 'Just now',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: const Color(0xFF8A8A8A),
-                            ),
-                          ),
-                        ],
+                      _MetricChip(label: 'Words', value: _wordCount.toString()),
+                      _MetricChip(
+                        label: 'Characters',
+                        value: _characterCount.toString(),
                       ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _titleController,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1E1E1E),
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: 'Title',
-                          border: InputBorder.none,
-                        ),
-                        maxLines: 2,
-                      ),
-                      const Divider(height: 24),
-                      TextField(
-                        controller: _contentController,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          height: 1.5,
-                          color: const Color(0xFF3D3D3D),
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: 'Start typing...',
-                          border: InputBorder.none,
-                        ),
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
+                      _MetricChip(
+                        label: 'Pinned',
+                        value: _isPinned ? 'Yes' : 'No',
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _titleController,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: 'Title',
+                    prefixIcon: Icon(Icons.title_rounded),
+                  ),
+                  maxLines: 2,
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                _buildCategorySection(context),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _contentController,
+                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.55),
+                  decoration: const InputDecoration(
+                    hintText: 'Start writing, or insert checklist items...',
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: null,
+                  minLines: 12,
+                  keyboardType: TextInputType.multiline,
                 ),
                 const SizedBox(height: 18),
                 Row(
@@ -249,30 +334,22 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                         onPressed: _showColorPicker,
                         icon: const Icon(Icons.palette_outlined),
                         label: const Text('Color'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary,
-                          side: BorderSide(color: theme.colorScheme.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: ElevatedButton.icon(
+                      child: OutlinedButton.icon(
+                        onPressed: _insertChecklistItem,
+                        icon: const Icon(Icons.checklist_rtl_rounded),
+                        label: const Text('Checklist'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
                         onPressed: _saveNote,
                         icon: const Icon(Icons.save_outlined),
                         label: const Text('Save'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -281,6 +358,42 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MetricChip extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MetricChip({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
       ),
     );
   }

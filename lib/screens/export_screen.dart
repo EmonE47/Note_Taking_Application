@@ -30,8 +30,9 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   Future<void> _requestPermission() async {
-    final granted =
-        await _exportService.ensureExportPermission(openSettingsIfDenied: true);
+    final granted = await _exportService.ensureExportPermission(
+      openSettingsIfDenied: true,
+    );
     if (mounted) {
       setState(() => _hasStoragePermission = granted);
     }
@@ -100,9 +101,9 @@ class _ExportScreenState extends State<ExportScreen> {
       setState(() => _exportStatus = 'ZIP created: $path');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup ZIP created!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Backup ZIP created!')));
       }
     } catch (e) {
       setState(() => _exportStatus = 'Error: $e');
@@ -124,9 +125,7 @@ class _ExportScreenState extends State<ExportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Export & Backup'),
-      ),
+      appBar: AppBar(title: const Text('Export & Backup')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -255,10 +254,7 @@ class _ExportScreenState extends State<ExportScreen> {
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      _exportStatus,
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                    Text(_exportStatus, style: const TextStyle(fontSize: 12)),
                   ],
                 ),
               ),

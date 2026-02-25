@@ -18,13 +18,19 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'notepad.db');
 
-    return await openDatabase(path, version: 1, onCreate: _createDatabase);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDatabase,
+      onUpgrade: _onUpgrade,
+    );
   }
 
   Future<void> _createDatabase(Database db, int version) async {
     await db.execute('''
       CREATE TABLE notes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cloud_id TEXT,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -34,12 +40,31 @@ class DatabaseHelper {
         category TEXT
       )
     ''');
+
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_cloud_id ON notes(cloud_id)',
+    );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      final columns = await db.rawQuery('PRAGMA table_info(notes)');
+      final hasCloudId = columns.any((column) => column['name'] == 'cloud_id');
+      if (!hasCloudId) {
+        await db.execute('ALTER TABLE notes ADD COLUMN cloud_id TEXT');
+      }
+
+      await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_cloud_id ON notes(cloud_id)',
+      );
+    }
   }
 
   // Create
   Future<int> insertNote(Note note) async {
     final db = await database;
-    return await db.insert('notes', note.toMap());
+    final data = note.toMap()..remove('id');
+    return await db.insert('notes', data);
   }
 
   // Read all notes
@@ -64,12 +89,30 @@ class DatabaseHelper {
     return null;
   }
 
+  Future<Note?> getNoteByCloudId(String cloudId) async {
+    final db = await database;
+    final maps = await db.query(
+      'notes',
+      where: 'cloud_id = ?',
+      whereArgs: [cloudId],
+    );
+
+    if (maps.isNotEmpty) {
+      return Note.fromMap(maps.first);
+    }
+
+    return null;
+  }
+
   // Update
   Future<int> updateNote(Note note) async {
+    if (note.id == null) return 0;
+
     final db = await database;
+    final data = note.toMap()..remove('id');
     return await db.update(
       'notes',
-      note.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [note.id],
     );
@@ -115,6 +158,26 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<void> upsertByCloudId(Note note) async {
+    if (note.cloudId == null) {
+      throw ArgumentError('cloudId is required for upsertByCloudId');
+    }
+
+    final existing = await getNoteByCloudId(note.cloudId!);
+    if (existing == null) {
+      await insertNote(note);
+      return;
+    }
+
+    note.id = existing.id;
+    await updateNote(note);
+  }
+
+  Future<void> clearAllNotes() async {
+    final db = await database;
+    await db.delete('notes');
   }
 
   Future<void> initDatabase() async {

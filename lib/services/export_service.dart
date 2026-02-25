@@ -19,7 +19,9 @@ class ExportService {
   Directory? _exportDir;
   String? _androidRootPath;
 
-  Future<bool> ensureExportPermission({bool openSettingsIfDenied = false}) async {
+  Future<bool> ensureExportPermission({
+    bool openSettingsIfDenied = false,
+  }) async {
     if (!Platform.isAndroid) return true;
 
     if (await Permission.manageExternalStorage.isGranted ||
@@ -70,7 +72,8 @@ class ExportService {
       }
     }
 
-    final fallback = await getDownloadsDirectory() ??
+    final fallback =
+        await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
     _exportDir = Directory(path.join(fallback.path, _primaryFolderName));
     if (!await _exportDir!.exists()) await _exportDir!.create(recursive: true);
@@ -126,14 +129,16 @@ class ExportService {
           final stat = await entity.stat();
           final timestamp = stat.modified;
 
-          notes.add(Note(
-            title: title.isEmpty ? 'Untitled' : title,
-            content: content,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-            color: '4280391411',
-            isPinned: false,
-          ));
+          notes.add(
+            Note(
+              title: title.isEmpty ? 'Untitled' : title,
+              content: content,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+              color: '4280391411',
+              isPinned: false,
+            ),
+          );
         } catch (_) {
           // Skip unreadable files
         }
@@ -187,10 +192,12 @@ class ExportService {
   Future<String> exportAllNotes() async {
     final notes = await DatabaseHelper.instance.getAllNotes();
     final exportDir = await exportDirectory;
-    final exportFolder = Directory(path.join(
-      exportDir.path,
-      'Backup_${DateTime.now().millisecondsSinceEpoch}',
-    ));
+    final exportFolder = Directory(
+      path.join(
+        exportDir.path,
+        'Backup_${DateTime.now().millisecondsSinceEpoch}',
+      ),
+    );
 
     if (!await exportFolder.exists()) {
       await exportFolder.create(recursive: true);
@@ -202,11 +209,13 @@ class ExportService {
     }
 
     final metaFile = File(path.join(exportFolder.path, '_backup_info.json'));
-    await metaFile.writeAsString(jsonEncode({
-      'export_date': DateTime.now().toIso8601String(),
-      'note_count': notes.length,
-      'app_version': '1.0.0',
-    }));
+    await metaFile.writeAsString(
+      jsonEncode({
+        'export_date': DateTime.now().toIso8601String(),
+        'note_count': notes.length,
+        'app_version': '1.0.0',
+      }),
+    );
 
     return exportFolder.path;
   }
@@ -214,10 +223,12 @@ class ExportService {
   Future<String> exportAsZip() async {
     final notes = await DatabaseHelper.instance.getAllNotes();
     final exportDir = await exportDirectory;
-    final zipFile = File(path.join(
-      exportDir.path,
-      'MyDiary_Backup_${DateTime.now().millisecondsSinceEpoch}.zip',
-    ));
+    final zipFile = File(
+      path.join(
+        exportDir.path,
+        'MyDiary_Backup_${DateTime.now().millisecondsSinceEpoch}.zip',
+      ),
+    );
 
     final archive = Archive();
     for (final note in notes) {

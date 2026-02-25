@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key});
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const EmptyState({
+    super.key,
+    this.title = 'Your notebook is waiting',
+    this.subtitle = 'Capture quick ideas, deep thoughts, or daily reminders.',
+    this.icon = Icons.auto_awesome_outlined,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -18,32 +27,27 @@ class EmptyState extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: LinearGradient(
                 colors: [
-                  theme.colorScheme.primary.withOpacity(0.25),
-                  theme.colorScheme.secondary.withOpacity(0.25),
+                  theme.colorScheme.primary.withValues(alpha: 0.25),
+                  theme.colorScheme.secondary.withValues(alpha: 0.25),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
-            child: Icon(
-              Icons.auto_awesome_outlined,
-              size: 64,
-              color: theme.colorScheme.primary,
-            ),
+            child: Icon(icon, size: 64, color: theme.colorScheme.primary),
           ),
           const SizedBox(height: 20),
           Text(
-            'Your notebook is waiting',
+            title,
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF1E1E1E),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Capture quick ideas, deep thoughts, or daily reminders.',
+            subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF6B6B6B),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
             ),
             textAlign: TextAlign.center,
           ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/note.dart';
+
 import '../database/database_helper.dart';
+import '../models/note.dart';
+import '../utils/constants.dart';
 import '../widgets/note_card.dart';
 import 'note_detail_screen.dart';
 
@@ -15,6 +17,7 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<Note> _searchResults = [];
   bool _isSearching = false;
+  String _selectedCategory = 'All';
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) {
@@ -27,10 +30,23 @@ class _SearchScreenState extends State<SearchScreen> {
 
     setState(() => _isSearching = true);
     final results = await DatabaseHelper.instance.searchNotes(query);
+
+    if (!mounted) return;
     setState(() {
       _searchResults = results;
       _isSearching = false;
     });
+  }
+
+  List<Note> get _visibleResults {
+    if (_selectedCategory == 'All') {
+      return _searchResults;
+    }
+
+    return _searchResults.where((note) {
+      return (note.category ?? '').trim().toLowerCase() ==
+          _selectedCategory.toLowerCase();
+    }).toList();
   }
 
   @override
@@ -42,93 +58,99 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visibleResults = _visibleResults;
 
     return Scaffold(
+      appBar: AppBar(title: const Text('Search Notes')),
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Search',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search by title or content...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            _performSearch('');
+                            setState(() => _selectedCategory = 'All');
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: (value) {
+                  _performSearch(value);
+                  setState(() {});
+                },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: theme.colorScheme.primary),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: 'Search notes...',
-                    border: InputBorder.none,
-                    icon: Icon(Icons.search, color: theme.colorScheme.primary),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              _performSearch('');
-                              setState(() {});
-                            },
-                          )
-                        : null,
+            SizedBox(
+              height: 42,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                children: [
+                  ChoiceChip(
+                    selected: _selectedCategory == 'All',
+                    label: const Text('All'),
+                    onSelected: (_) =>
+                        setState(() => _selectedCategory = 'All'),
                   ),
-                  onChanged: (value) {
-                    _performSearch(value);
-                    setState(() {});
-                  },
-                ),
+                  const SizedBox(width: 8),
+                  ...AppConstants.categories.map((category) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        selected: _selectedCategory == category,
+                        label: Text(category),
+                        onSelected: (_) =>
+                            setState(() => _selectedCategory = category),
+                      ),
+                    );
+                  }),
+                ],
               ),
             ),
             const SizedBox(height: 8),
             Expanded(
               child: _isSearching
                   ? const Center(child: CircularProgressIndicator())
-                  : _searchResults.isEmpty
+                  : visibleResults.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             _searchController.text.isEmpty
-                                ? Icons.search
-                                : Icons.search_off,
+                                ? Icons.search_rounded
+                                : Icons.search_off_rounded,
                             size: 64,
-                            color: Colors.grey[400],
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.35,
+                            ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           Text(
                             _searchController.text.isEmpty
-                                ? 'Search for notes'
-                                : 'No results found',
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: Colors.grey[600],
+                                ? 'Type to search your notes'
+                                : 'No matching notes found',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Try a different keyword or category filter.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.65,
+                              ),
                             ),
                           ),
                         ],
@@ -136,18 +158,17 @@ class _SearchScreenState extends State<SearchScreen> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _searchResults.length,
+                      itemCount: visibleResults.length,
                       itemBuilder: (context, index) {
-                        final note = _searchResults[index];
+                        final note = visibleResults[index];
                         return NoteCard(
                           note: note,
                           onTap: () async {
                             await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => NoteDetailScreen(
-                                  note: note,
-                                ),
+                                builder: (context) =>
+                                    NoteDetailScreen(note: note),
                               ),
                             );
                             _performSearch(_searchController.text);
