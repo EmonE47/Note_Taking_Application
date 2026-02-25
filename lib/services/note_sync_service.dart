@@ -1,8 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../database/database_helper.dart';
 import '../models/note.dart';
 import 'auth_service.dart';
+import 'drive_service.dart';
 
 class NoteSyncException implements Exception {
   final String message;
@@ -18,69 +17,72 @@ class NoteSyncService {
   static final NoteSyncService instance = NoteSyncService._internal();
   NoteSyncService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  CollectionReference<Map<String, dynamic>> _notesRef(String uid) {
-    return _firestore.collection('users').doc(uid).collection('notes');
-  }
-
   Future<void> syncAllNotes() async {
     try {
       final user = AuthService.instance.currentUser;
       if (user == null) return;
 
-      final notesRef = _notesRef(user.uid);
-      final localNotes = await DatabaseHelper.instance.getAllNotes();
-      final cloudSnapshot = await notesRef.get();
-      final cloudNotes = cloudSnapshot.docs
-          .map((doc) => Note.fromCloudMap(doc.data(), cloudId: doc.id))
-          .toList();
+      await DriveService.instance.ensureNotesFolder();
 
-      final cloudById = <String, Note>{
-        for (final note in cloudNotes)
-          if (note.cloudId != null) note.cloudId!: note,
+      final localNotes = await DatabaseHelper.instance.getAllNotes();
+      final driveNotes = await DriveService.instance.listNotes();
+
+      final driveByFileId = <String, Note>{
+        for (final note in driveNotes)
+          if (note.cloudId != null && note.cloudId!.isNotEmpty)
+            note.cloudId!: note,
       };
-      final syncedCloudIds = <String>{};
+      final syncedFileIds = <String>{};
 
       for (final localNote in localNotes) {
         final cloudId = localNote.cloudId;
         if (cloudId == null || cloudId.isEmpty) {
-          final docRef = notesRef.doc();
-          await docRef.set(localNote.toCloudMap());
-          localNote.cloudId = docRef.id;
+          final createdFileId = await DriveService.instance.createNoteFile(
+            localNote,
+          );
+          localNote.cloudId = createdFileId;
           await DatabaseHelper.instance.updateNote(localNote);
-          syncedCloudIds.add(docRef.id);
+          syncedFileIds.add(createdFileId);
           continue;
         }
 
-        final cloudNote = cloudById[cloudId];
-        if (cloudNote == null) {
-          await notesRef.doc(cloudId).set(localNote.toCloudMap());
-          syncedCloudIds.add(cloudId);
+        final driveNote = driveByFileId[cloudId];
+        if (driveNote == null) {
+          final createdFileId = await DriveService.instance.createNoteFile(
+            localNote,
+          );
+          if (createdFileId != cloudId) {
+            localNote.cloudId = createdFileId;
+            await DatabaseHelper.instance.updateNote(localNote);
+          }
+          syncedFileIds.add(createdFileId);
           continue;
         }
 
-        syncedCloudIds.add(cloudId);
-        if (localNote.updatedAt.isAfter(cloudNote.updatedAt)) {
-          await notesRef.doc(cloudId).set(localNote.toCloudMap());
-        } else if (cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
-          cloudNote.id = localNote.id;
-          await DatabaseHelper.instance.updateNote(cloudNote);
+        syncedFileIds.add(cloudId);
+        if (localNote.updatedAt.isAfter(driveNote.updatedAt)) {
+          await DriveService.instance.updateNoteFile(
+            fileId: cloudId,
+            note: localNote,
+          );
+        } else if (driveNote.updatedAt.isAfter(localNote.updatedAt)) {
+          driveNote.id = localNote.id;
+          await DatabaseHelper.instance.updateNote(driveNote);
         }
       }
 
-      for (final cloudNote in cloudNotes) {
-        final cloudId = cloudNote.cloudId;
-        if (cloudId == null || syncedCloudIds.contains(cloudId)) {
+      for (final driveNote in driveNotes) {
+        final cloudId = driveNote.cloudId;
+        if (cloudId == null || syncedFileIds.contains(cloudId)) {
           continue;
         }
 
-        await DatabaseHelper.instance.upsertByCloudId(cloudNote);
+        await DatabaseHelper.instance.upsertByCloudId(driveNote);
       }
-    } on FirebaseException catch (e) {
+    } on DriveServiceException catch (e) {
       throw _toSyncException(e);
-    } catch (e) {
-      throw NoteSyncException(
+    } catch (_) {
+      throw const NoteSyncException(
         message: 'Cloud sync failed unexpectedly. Please try again.',
         code: 'unknown',
       );
@@ -88,23 +90,38 @@ class NoteSyncService {
   }
 
   Future<void> upsertNote(Note note) async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) return;
+
     try {
-      final user = AuthService.instance.currentUser;
-      if (user == null) return;
+      final hasCloudId = note.cloudId != null && note.cloudId!.isNotEmpty;
+      if (!hasCloudId && note.id != null) {
+        final latest = await DatabaseHelper.instance.getNote(note.id!);
+        final latestCloudId = latest?.cloudId;
+        if (latestCloudId != null && latestCloudId.isNotEmpty) {
+          note.cloudId = latestCloudId;
+        }
+      }
 
-      final notesRef = _notesRef(user.uid);
+      await DriveService.instance.ensureNotesFolder();
+
       final cloudId = note.cloudId;
-
       if (cloudId == null || cloudId.isEmpty) {
-        final docRef = notesRef.doc();
-        await docRef.set(note.toCloudMap());
-        note.cloudId = docRef.id;
+        final createdFileId = await DriveService.instance.createNoteFile(note);
+        note.cloudId = createdFileId;
         await DatabaseHelper.instance.updateNote(note);
         return;
       }
 
-      await notesRef.doc(cloudId).set(note.toCloudMap());
-    } on FirebaseException catch (e) {
+      await DriveService.instance.updateNoteFile(fileId: cloudId, note: note);
+    } on DriveServiceException catch (e) {
+      if (e.code == 'not-found') {
+        final createdFileId = await DriveService.instance.createNoteFile(note);
+        note.cloudId = createdFileId;
+        await DatabaseHelper.instance.updateNote(note);
+        return;
+      }
+
       throw _toSyncException(e);
     } catch (_) {
       throw const NoteSyncException(
@@ -115,15 +132,16 @@ class NoteSyncService {
   }
 
   Future<void> deleteNoteFromCloud(Note note) async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) return;
+
+    final cloudId = note.cloudId;
+    if (cloudId == null || cloudId.isEmpty) return;
+
     try {
-      final user = AuthService.instance.currentUser;
-      if (user == null) return;
-
-      final cloudId = note.cloudId;
-      if (cloudId == null || cloudId.isEmpty) return;
-
-      await _notesRef(user.uid).doc(cloudId).delete();
-    } on FirebaseException catch (e) {
+      await DriveService.instance.deleteNoteFile(cloudId);
+    } on DriveServiceException catch (e) {
+      if (e.code == 'not-found') return;
       throw _toSyncException(e);
     } catch (_) {
       throw const NoteSyncException(
@@ -133,25 +151,46 @@ class NoteSyncService {
     }
   }
 
-  NoteSyncException _toSyncException(FirebaseException e) {
+  NoteSyncException _toSyncException(DriveServiceException e) {
     switch (e.code) {
-      case 'permission-denied':
+      case 'auth-required':
+      case 'unauthorized':
+      case 'drive-auth-failed':
         return const NoteSyncException(
-          code: 'permission-denied',
+          code: 'auth',
           message:
-              'Cloud sync blocked by Firestore rules. Update rules for this user.',
+              'Google Drive access is required. Sign in again with Google to sync notes.',
         );
-      case 'failed-precondition':
+      case 'drive-access-required':
         return const NoteSyncException(
-          code: 'failed-precondition',
+          code: 'drive-access-required',
           message:
-              'Cloud Firestore is not ready for this project. Enable Firestore in Firebase Console.',
+              'Google Drive permission is required for cloud sync. Allow access and try again.',
         );
-      case 'unavailable':
-      case 'deadline-exceeded':
+      case 'auth-config-error':
+        return const NoteSyncException(
+          code: 'auth-config-error',
+          message:
+              'Google Sign-In is not configured for Android yet. Add SHA-1/SHA-256 in Firebase and update google-services.json.',
+        );
+      case 'drive-api-disabled':
+        return const NoteSyncException(
+          code: 'drive-api-disabled',
+          message:
+              'Google Drive API is disabled for this project. Enable it in Google Cloud Console and try again.',
+        );
+      case 'network':
         return const NoteSyncException(
           code: 'network',
-          message: 'No internet or Firestore unavailable. Using offline notes.',
+          message: 'Network error while connecting to Google Drive.',
+        );
+      case 'permission-denied':
+        return NoteSyncException(code: 'permission-denied', message: e.message);
+      case 'rate-limited':
+        return const NoteSyncException(
+          code: 'rate-limited',
+          message:
+              'Google Drive is busy. Please try syncing again in a moment.',
         );
       default:
         return NoteSyncException(

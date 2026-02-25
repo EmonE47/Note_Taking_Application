@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -36,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadNotes(syncWithCloud: true);
+    unawaited(_bootstrap());
   }
 
   List<Note> get _visibleNotes {
@@ -87,28 +89,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return ['All', ...categories];
   }
 
-  Future<void> _loadNotes({bool syncWithCloud = false}) async {
-    setState(() => _isLoading = true);
+  Future<void> _bootstrap() async {
+    await _loadNotes(showLoader: true);
+    unawaited(_syncInBackground(showFailureSnackBar: false));
+  }
 
-    if (syncWithCloud) {
-      try {
-        await NoteSyncService.instance.syncAllNotes();
-        _lastSyncedAt = DateTime.now();
-      } on NoteSyncException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(e.message)));
-        }
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cloud sync failed. Showing offline notes.'),
-            ),
-          );
-        }
-      }
+  Future<void> _loadNotes({bool showLoader = false}) async {
+    if (showLoader && mounted) {
+      setState(() => _isLoading = true);
     }
 
     final allNotes = await DatabaseHelper.instance.getAllNotes();
@@ -122,6 +110,28 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       _isLoading = false;
     });
+  }
+
+  Future<void> _syncInBackground({bool showFailureSnackBar = true}) async {
+    try {
+      await NoteSyncService.instance.syncAllNotes();
+      if (mounted) {
+        setState(() => _lastSyncedAt = DateTime.now());
+      }
+      await _loadNotes();
+    } on NoteSyncException catch (e) {
+      if (!mounted || !showFailureSnackBar) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted || !showFailureSnackBar) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cloud sync failed. Showing offline notes.'),
+        ),
+      );
+    }
   }
 
   Future<void> _deleteNote(Note note) async {
@@ -172,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (context) => const SearchScreen()),
     );
     if (mounted) {
-      _loadNotes();
+      unawaited(_loadNotes());
     }
   }
 
@@ -542,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final visibleNotes = _visibleNotes;
 
     return RefreshIndicator(
-      onRefresh: () => _loadNotes(syncWithCloud: true),
+      onRefresh: _syncInBackground,
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(child: _buildOverviewPanel(context)),
@@ -641,7 +651,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             tooltip: 'Sync now',
             icon: const Icon(Icons.cloud_sync_rounded),
-            onPressed: () => _loadNotes(syncWithCloud: true),
+            onPressed: () => unawaited(_syncInBackground()),
           ),
           IconButton(
             tooltip: 'Theme',

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
@@ -91,30 +93,48 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       await DatabaseHelper.instance.updateNote(note);
     }
 
-    await _syncNoteToCloud(note);
-    await _syncNoteFile(note, previousFileName: previousFileName);
+    unawaited(_syncNoteToCloud(note, showFailureSnackBar: false));
+    unawaited(
+      _syncNoteFile(
+        note,
+        previousFileName: previousFileName,
+        showFailureSnackBar: false,
+      ),
+    );
 
     if (!mounted) return;
     Navigator.pop(context, true);
   }
 
-  Future<void> _syncNoteToCloud(Note note) async {
+  Future<void> _syncNoteToCloud(
+    Note note, {
+    bool showFailureSnackBar = true,
+  }) async {
     try {
       await NoteSyncService.instance.upsertNote(note);
+    } on NoteSyncException catch (e) {
+      if (!mounted || !showFailureSnackBar) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       // Keep local save successful even when cloud sync fails.
     }
   }
 
-  Future<void> _syncNoteFile(Note note, {String? previousFileName}) async {
+  Future<void> _syncNoteFile(
+    Note note, {
+    String? previousFileName,
+    bool showFailureSnackBar = true,
+  }) async {
     try {
       final exportService = ExportService.instance;
       final granted = await exportService.ensureExportPermission(
-        openSettingsIfDenied: true,
+        openSettingsIfDenied: showFailureSnackBar,
       );
 
       if (!granted) {
-        if (!mounted) return;
+        if (!mounted || !showFailureSnackBar) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -130,7 +150,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         previousFileName: previousFileName,
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !showFailureSnackBar) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to write file: $e'),
