@@ -18,29 +18,35 @@ class NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final baseColor = note.noteColor;
-    final gradientBase = Color.lerp(
+    final gradientStart = Color.lerp(
       baseColor,
       theme.colorScheme.surface,
-      0.78,
+      0.7,
+    )!;
+    final gradientEnd = Color.lerp(
+      theme.colorScheme.surface,
+      theme.colorScheme.secondary.withValues(alpha: 0.08),
+      0.5,
     )!;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: baseColor.withValues(alpha: 0.25), width: 1),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: baseColor.withValues(alpha: 0.3), width: 1),
       ),
       child: Ink(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [gradientBase, theme.colorScheme.surface],
+            colors: [gradientStart, gradientEnd],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         child: InkWell(
           onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: Column(
@@ -53,7 +59,7 @@ class NoteCard extends StatelessWidget {
                       width: 10,
                       decoration: BoxDecoration(
                         color: baseColor,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -108,7 +114,7 @@ class NoteCard extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: baseColor.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(9),
                         ),
                         child: Text(
                           note.category!,
@@ -123,10 +129,10 @@ class NoteCard extends StatelessWidget {
                         horizontal: 10,
                         vertical: 5,
                       ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest
                             .withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(9),
                       ),
                       child: Text(
                         '${note.wordCount} words',
@@ -138,11 +144,11 @@ class NoteCard extends StatelessWidget {
                         horizontal: 10,
                         vertical: 5,
                       ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest
                             .withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -169,7 +175,7 @@ class NoteCard extends StatelessWidget {
                           color: theme.colorScheme.secondary.withValues(
                             alpha: 0.15,
                           ),
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(9),
                         ),
                         child: Text(
                           'Pinned',
